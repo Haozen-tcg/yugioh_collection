@@ -3,7 +3,6 @@ import pandas as pd
 import json
 import os
 
-# 📥 Charger les cartes depuis un fichier JSON
 @st.cache_data
 def load_cards(json_file="all_cards.json"):
     if not os.path.exists(json_file):
@@ -26,7 +25,6 @@ def load_cards(json_file="all_cards.json"):
             })
     return pd.DataFrame(rows)
 
-# 🖼️ Interface Streamlit
 def main():
     st.set_page_config(layout="wide")
     st.title("🃏 Gestion de ta collection Yu-Gi-Oh!")
@@ -35,7 +33,6 @@ def main():
     if df.empty:
         st.stop()
 
-    # 📌 Sélection d'extension
     extensions = sorted(df["Extension"].unique())
     selected_ext = st.selectbox("Choisis une extension :", ["Toutes"] + extensions)
 
@@ -44,13 +41,22 @@ def main():
     else:
         filtered_df = df.copy()
 
-    # 🔽 Tri dynamique
     sort_by = st.selectbox("Trier les cartes par :", ["Extension", "Nom", "Rareté"])
     filtered_df = filtered_df.sort_values(by=[sort_by, "Nom"]).reset_index(drop=True)
 
     st.markdown("## 📋 Liste des cartes")
 
-    for index, row in filtered_df.iterrows():
+    # Pagination
+    cards_per_page = 50
+    total_cards = len(filtered_df)
+    total_pages = (total_cards // cards_per_page) + (1 if total_cards % cards_per_page else 0)
+
+    page = st.number_input("Page", min_value=1, max_value=total_pages, value=1)
+    start_idx = (page - 1) * cards_per_page
+    end_idx = start_idx + cards_per_page
+    subset_df = filtered_df.iloc[start_idx:end_idx]
+
+    for index, row in subset_df.iterrows():
         cols = st.columns([1, 3])
         with cols[0]:
             if row["Image_URL"]:
@@ -64,11 +70,10 @@ def main():
                 "Quantité possédée",
                 min_value=0,
                 value=int(row["Quantité possédée"]),
-                key=f"qty_{index}"
+                key=f"qty_{start_idx + index}"
             )
-            filtered_df.at[index, "Quantité possédée"] = qty
+            filtered_df.at[start_idx + index, "Quantité possédée"] = qty
 
-    # 💾 Sauvegarde
     if st.button("💾 Sauvegarder ma collection"):
         filename = "ma_collection_yugioh.xlsx"
         filtered_df.to_excel(filename, index=False)
