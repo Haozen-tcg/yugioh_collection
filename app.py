@@ -33,20 +33,36 @@ def main():
     if df.empty:
         st.stop()
 
+    # 🔍 Barre de recherche avec loupe
+    st.markdown("### 🔍 Rechercher une carte")
+    search_col1, search_col2 = st.columns([8, 1])
+    with search_col1:
+        search_query = st.text_input("Nom de la carte", "", label_visibility="collapsed").strip().lower()
+    with search_col2:
+        st.write("")  # espace vertical
+        st.button("🔍", key="search_button")
+
+    # 📂 Filtre par extension
     extensions = sorted(df["Extension"].unique())
-    selected_ext = st.selectbox("Choisis une extension :", ["Toutes"] + extensions)
+    selected_ext = st.selectbox("📂 Filtrer par extension :", ["Toutes"] + extensions)
 
+    # 🧹 Filtrage combiné
+    filtered_df = df.copy()
     if selected_ext != "Toutes":
-        filtered_df = df[df["Extension"] == selected_ext].reset_index(drop=True)
-    else:
-        filtered_df = df.copy()
+        filtered_df = filtered_df[filtered_df["Extension"] == selected_ext]
+    if search_query:
+        filtered_df = filtered_df[filtered_df["Nom"].str.lower().str.contains(search_query)]
 
+    if filtered_df.empty:
+        st.warning("Aucune carte trouvée avec les filtres appliqués.")
+        return
+
+    # 🔽 Tri
     sort_by = st.selectbox("Trier les cartes par :", ["Extension", "Nom", "Rareté"])
     filtered_df = filtered_df.sort_values(by=[sort_by, "Nom"]).reset_index(drop=True)
 
+    # 📄 Pagination
     st.markdown("## 📋 Liste des cartes")
-
-    # Pagination
     cards_per_page = 50
     total_cards = len(filtered_df)
     total_pages = (total_cards // cards_per_page) + (1 if total_cards % cards_per_page else 0)
@@ -74,6 +90,7 @@ def main():
             )
             filtered_df.at[start_idx + index, "Quantité possédée"] = qty
 
+    # 💾 Export
     if st.button("💾 Sauvegarder ma collection"):
         filename = "ma_collection_yugioh.xlsx"
         filtered_df.to_excel(filename, index=False)
