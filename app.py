@@ -79,17 +79,25 @@ def main():
         except Exception as e:
             st.error(f"Erreur lors du chargement de la collection : {e}")
 
-    # Barre latérale : recherche et filtre
+    # Sidebar : filtres
     with st.sidebar:
+        # Filtre multi-extension
+        extensions = sorted(df["Extension"].unique())
+        selected_extensions = st.multiselect("📦 Filtrer par extension", extensions, default=extensions)
+
         recherche = st.text_input("🔍 Rechercher une carte")
         possede = st.checkbox("📦 Afficher uniquement les cartes que je possède")
         if st.button("🔁 Réinitialiser les filtres"):
             recherche = ""
             possede = False
+            selected_extensions = extensions
 
+    # Appliquer filtre extension
+    df = df[df["Extension"].isin(selected_extensions)]
+
+    # Appliquer les autres filtres
     if recherche:
         df = df[df["Nom"].str.contains(recherche, case=False, na=False)]
-
     if possede:
         df = df[df["Quantité possédée"] > 0]
 
