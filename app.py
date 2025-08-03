@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 import json
 import os
+from io import BytesIO
 
-# ========== Chargement des cartes ==========
+# ========== Chargement des cartes depuis JSON ==========
 def load_cards():
     with open("all_cards.json", "r", encoding="utf-8") as f:
         raw_data = json.load(f)
@@ -39,63 +40,69 @@ def load_cards():
 
     return pd.DataFrame(cards)
 
-# ========== Sauvegarde automatique ==========
+# ========== Sauvegarde automatique utilisateur ==========
 def save_user_collection(df, user_file):
-    df_to_save = df[["Nom", "Extension", "Quantité possédée"]]
-    df_to_save.to_excel(user_file, index=False)
+    df_to_save = df[["Nom", "Extension", "Rareté", "Code", "Quantité possédée"]]
+    df_to_save.sort_values(by=["Extension", "Nom"], inplace=True)
+    df_to_save.to_excel(user_file, index=False, engine='openpyxl')
 
-# ========== Interface principale ==========
+# ========== Génération export Excel ==========    
+def generate_excel_file(df):
+    df_export = df[df["Quantité possédée"] > 0][["Nom", "Extension", "Rareté", "Code", "Quantité possédée"]]
+    df_export = df_export.sort_values(by=["Extension", "Nom"])
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df_export.to_excel(writer, index=False, sheet_name="Ma Collection")
+    output.seek(0)
+    return output
+
+# ========== Application principale ==========
 def main():
     st.set_page_config(layout="wide")
     st.title("🃏 Gestion de collection Yu-Gi-Oh!")
 
-    # --- Choix de l'utilisateur
     user = st.text_input("Entrez votre nom ou pseudo :", "")
     if not user:
-        st.warning("Veuillez entrer un nom pour charger votre collection.")
+        st.warning("Veuillez entrer un nom.")
         st.stop()
 
     user_file = f"collection_{user.lower().replace(' ', '_')}.xlsx"
-
-    # --- Chargement cartes
     df = load_cards()
 
-    # --- Chargement collection existante
+    # Charger la collection sauvegardée
     if os.path.exists(user_file):
         try:
-            user_df = pd.read_excel(user_file)
-            df = df.merge(user_df, on=["Nom", "Extension"], how="left", suffixes=("", "_saved"))
+            saved_df = pd.read_excel(user_file)
+            df = df.merge(saved_df, on=["Nom", "Extension", "Rareté", "Code"], how="left", suffixes=("", "_saved"))
             df["Quantité possédée"] = df["Quantité possédée_saved"].fillna(0).astype(int)
             df.drop(columns=["Quantité possédée_saved"], inplace=True)
         except Exception as e:
             st.error(f"Erreur lors du chargement de la collection : {e}")
-    else:
-        df["Quantité possédée"] = 0
 
-    # --- Barre de recherche
+    # Barre latérale : recherche et filtre
     with st.sidebar:
-        recherche = st.text_input("🔍 Rechercher une carte par nom")
-        possede_seulement = st.checkbox("Afficher uniquement les cartes que je possède")
-        if st.button("🔄 Réinitialiser les filtres"):
+        recherche = st.text_input("🔍 Rechercher une carte")
+        possede = st.checkbox("📦 Afficher uniquement les cartes que je possède")
+        if st.button("🔁 Réinitialiser les filtres"):
             recherche = ""
-            possede_seulement = False
+            possede = False
 
     if recherche:
         df = df[df["Nom"].str.contains(recherche, case=False, na=False)]
 
-    if possede_seulement:
+    if possede:
         df = df[df["Quantité possédée"] > 0]
 
-    # --- Pagination
+    # Pagination
     page_size = 12
-    total_pages = (len(df) - 1) // page_size + 1
+    total_pages = max((len(df) - 1) // page_size + 1, 1)
     page = st.number_input("Page", min_value=1, max_value=total_pages, value=1)
 
     start = (page - 1) * page_size
     end = start + page_size
     df_page = df.iloc[start:end]
 
-    # --- Affichage des cartes
+    # Affichage des cartes
     for i, row in df_page.iterrows():
         cols = st.columns([1, 3, 2])
         with cols[0]:
@@ -103,15 +110,24 @@ def main():
         with cols[1]:
             st.markdown(f"**{row['Nom']}**")
             st.markdown(f"`{row['Code']}` — *{row['Extension']}*")
-            st.markdown(f"💎 Rareté : `{row['Rareté']}`")
+            st.markdown(f"💎 `{row['Rareté']}`")
         with cols[2]:
             qty = st.number_input(f"Quantité ({row['Nom']})", min_value=0, value=int(row["Quantité possédée"]), key=f"qty_{i}")
             df.at[i, "Quantité possédée"] = qty
 
-    # --- Sauvegarde automatique
+    # Sauvegarde automatique
     save_user_collection(df, user_file)
-    st.success("✅ Collection sauvegardée automatiquement.")
+    st.success("✅ Collection sauvegardée.")
 
-# ========== Lancement ==========
+    # Export Excel
+    st.markdown("### 📥 Export Excel")
+    excel_data = generate_excel_file(df)
+    st.download_button(
+        label="Télécharger ma collection",
+        data=excel_data,
+        file_name=f"yugioh_collection_{user}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
 if __name__ == "__main__":
     main()
